@@ -1,7 +1,7 @@
 package labrpc
 
 //
-// channel-based RPC, for 824 labs.
+// channel-based RPC, for 824 6.824.
 //
 // simulates a network that can lose requests, lose replies,
 // delay messages, and entirely disconnect particular hosts.

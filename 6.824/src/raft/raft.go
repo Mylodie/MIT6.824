@@ -22,7 +22,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	//	"labs/labgob"
+	//	"6.824/labgob"
 	"6.824/labrpc"
 )
 

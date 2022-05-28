@@ -98,7 +98,7 @@ check_lab4a() {
 check_lab4b() {
     check_cmd cd src/shardkv
     check_cmd go test -c
-    # also check other labs/parts
+    # also check other 6.824/parts
     cd "$tmpdir"
     check_lab4a
     cd "$tmpdir"

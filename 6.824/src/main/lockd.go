@@ -1,6 +1,6 @@
 package main
 
-// export GOPATH=~/labs
+// export GOPATH=~/6.824
 // go build lockd.go
 // go build lockc.go
 // ./lockd -p a b &

@@ -3,7 +3,7 @@ package main
 //
 // pbservice client application
 //
-// export GOPATH=~/labs
+// export GOPATH=~/6.824
 // go build viewd.go
 // go build pbd.go
 // go build pbc.go
