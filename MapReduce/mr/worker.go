@@ -37,7 +37,7 @@ func rand4num() int {
 var WorkId = rand4num()
 
 func Worker(mapF func(string, string) []KeyValue, reduceF func(string, []string) string) {
-	logfile, _ := os.Create(fmt.Sprintf("mr-worker-%v-log", WorkId))
+	logfile, _ := os.Create(fmt.Sprintf("/var/tmp/mr-worker-%v-log", WorkId))
 	log.SetOutput(logfile)
 
 	for {
