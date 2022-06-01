@@ -23,8 +23,8 @@ const (
 )
 
 type Task struct {
-	mapKey    string
-	reduceKey int
+	MapKey    string
+	ReduceKey int
 	status    int
 	startTime time.Time
 }
@@ -37,8 +37,8 @@ type CommMsg struct {
 
 type Coordinator struct {
 	files   []string
-	nReduce int
-	imFiles []string
+	NReduce int
+	ImFiles []string
 	phrase  int
 	tasks   []*Task
 	commCh  chan CommMsg
@@ -63,14 +63,16 @@ func (c *Coordinator) getTask(cond func(*Task) bool) *Task {
 
 func (c *Coordinator) initMapPhrase() {
 	for _, file := range c.files {
-		c.tasks = append(c.tasks, &Task{mapKey: file, status: InitializedTask})
+		c.tasks = append(c.tasks, &Task{MapKey: file, status: InitializedTask})
 	}
+	log.Println("Initialized map phrase")
 }
 func (c *Coordinator) initReducePhrase() {
 	c.tasks = []*Task{}
-	for i := 0; i < c.nReduce; i++ {
-		c.tasks = append(c.tasks, &Task{reduceKey: i, status: InitializedTask})
+	for i := 0; i < c.NReduce; i++ {
+		c.tasks = append(c.tasks, &Task{ReduceKey: i, status: InitializedTask})
 	}
+	log.Println("Initialized reduce phrase")
 }
 
 func (c *Coordinator) schedule() {
@@ -78,8 +80,10 @@ func (c *Coordinator) schedule() {
 		defer close(c.done)
 
 		core := func() {
+			log.Println("Core started")
 			for {
 				msg := <-c.commCh
+				log.Println("Core get msg", msg)
 				if msg.args.Operation == QueryOP {
 					task := c.getTask(func(task *Task) bool {
 						return task.status == InitializedTask ||
@@ -90,12 +94,14 @@ func (c *Coordinator) schedule() {
 						task.status = ScheduledTask
 						if c.phrase == MapPhrase {
 							msg.reply.Type = MapType
-							msg.reply.mapKey = task.mapKey
+							msg.reply.MapKey = task.MapKey
+							log.Println("Scheduled map task", task.MapKey)
 						} else if c.phrase == ReducePhrase {
 							msg.reply.Type = ReduceType
-							msg.reply.reduceKey = task.reduceKey
-							msg.reply.imFiles = c.imFiles
-							msg.reply.nReduce = c.nReduce
+							msg.reply.ReduceKey = task.ReduceKey
+							msg.reply.ImFiles = c.ImFiles
+							msg.reply.NReduce = c.NReduce
+							log.Println("Scheduled reduce task", task.ReduceKey)
 						}
 					} else {
 						msg.reply.Type = IdleType
@@ -104,19 +110,24 @@ func (c *Coordinator) schedule() {
 					var task *Task
 					if c.phrase == MapPhrase && msg.args.Type == MapType {
 						task = c.getTask(func(task *Task) bool {
-							return task.mapKey == msg.args.mapKey
+							return task.MapKey == msg.args.MapKey
 						})
+						log.Println("Finished map task", task.MapKey)
+						if task.status == ScheduledTask {
+							task.status = FinishedTask
+							c.ImFiles = append(c.ImFiles, msg.args.ImFile)
+							msg.reply.Applied = true
+						} else {
+							msg.reply.Applied = false
+						}
 					} else if c.phrase == ReducePhrase && msg.args.Type == ReduceType {
 						task = c.getTask(func(task *Task) bool {
-							return task.reduceKey == msg.args.reduceKey
+							return task.ReduceKey == msg.args.ReduceKey
 						})
-					}
-					if task.status == ScheduledTask {
-						task.status = FinishedTask
-						c.imFiles = append(c.imFiles, msg.args.imFile)
-						msg.reply.applied = true
-					} else {
-						msg.reply.applied = false
+						log.Println("Finished reduce task", task.ReduceKey)
+						if task.status == ScheduledTask {
+							task.status = FinishedTask
+						}
 					}
 				} else {
 					log.Printf("Get wrong CommArgs.Operation %d\n", msg.args.Operation)
@@ -167,14 +178,16 @@ func (c *Coordinator) Done() bool {
 	}
 }
 
-func MakeCoordinator(files []string, nReduce int) *Coordinator {
+func MakeCoordinator(files []string, NReduce int) *Coordinator {
 	logfile, _ := os.Create("/var/tmp/mr-master-log")
 	log.SetOutput(logfile)
 
 	c := Coordinator{}
 
-	c.nReduce = nReduce
+	c.NReduce = NReduce
 	c.files = append(c.files, files...)
+	c.commCh = make(chan CommMsg)
+	c.done = make(chan Nil)
 
 	c.server()
 	log.Printf("Launched server.\n")

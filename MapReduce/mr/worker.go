@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"reflect"
 	"time"
 )
 import "log"
@@ -31,6 +32,7 @@ func ihash(key string) int {
 }
 
 func rand4num() int {
+	rand.Seed(time.Now().UnixNano())
 	return 1000 + rand.Intn(9000)
 }
 
@@ -39,6 +41,7 @@ var WorkId = rand4num()
 func Worker(mapF func(string, string) []KeyValue, reduceF func(string, []string) string) {
 	logfile, _ := os.Create(fmt.Sprintf("/var/tmp/mr-worker-%v-log", WorkId))
 	log.SetOutput(logfile)
+	log.Println("Start working...")
 
 	for {
 		if reply, ok := query(); ok {
@@ -59,70 +62,79 @@ func Worker(mapF func(string, string) []KeyValue, reduceF func(string, []string)
 }
 
 func query() (*CommReply, bool) {
+	log.Println("Begin query")
 	args := &CommArgs{Operation: QueryOP}
 	reply := &CommReply{}
-
 	ok := call("Coordinator.Communicate", args, reply)
+	log.Println("Query result", reply, ok)
 	return reply, ok
 }
 
-func reportMap(mapKey string, imFile string) bool {
-	args := &CommArgs{Operation: ReportOP, Type: MapType, mapKey: mapKey, imFile: imFile}
+func reportMap(MapKey string, ImFile string) bool {
+	args := &CommArgs{Operation: ReportOP, Type: MapType, MapKey: MapKey, ImFile: ImFile}
 	reply := &CommReply{}
 
 	if ok := call("Coordinator.Communicate", args, reply); ok {
-		return reply.applied
+		return reply.Applied
 	} else {
 		return false
 	}
 }
 
-func reportReduce(reduceKey int) {
-	args := &CommArgs{Operation: ReportOP, Type: ReduceType, reduceKey: reduceKey}
+func reportReduce(ReduceKey int) {
+	args := &CommArgs{Operation: ReportOP, Type: ReduceType, ReduceKey: ReduceKey}
 	reply := &CommReply{}
 	call("Coordinator.Communicate", args, reply)
 	return
 }
 
 func doMapTask(mapF func(string, string) []KeyValue, reply *CommReply) {
-	file, err := os.Open(reply.mapKey)
+	log.Println("Begin map task", reply.MapKey)
+	file, err := os.Open(reply.MapKey)
 	if err != nil {
-		log.Printf("fail to open %v\n", reply.mapKey)
+		log.Printf("fail to open %v\n", reply.MapKey)
 		return
 	}
 	content, err := ioutil.ReadAll(file)
 	if err != nil {
-		log.Printf("fail to read %v\n", reply.mapKey)
+		log.Printf("fail to read %v\n", reply.MapKey)
 		return
 	}
 	file.Close()
 
-	kva := mapF(reply.mapKey, string(content))
+	kva := mapF(reply.MapKey, string(content))
 
-	imFile := fmt.Sprintf("mr-im-%d.json", rand4num())
-	if f, err := os.Create(imFile); err == nil {
+	ImFile := fmt.Sprintf("mr-im-%d.json", rand4num())
+	if f, err := os.Create(ImFile); err == nil {
 		enc := json.NewEncoder(f)
 		enc.Encode(&kva)
 
 	} else {
-		log.Printf("fail to create %v\n", imFile)
+		log.Printf("fail to create %v\n", ImFile)
 		return
 	}
 
-	if ok := reportMap(reply.mapKey, imFile); !ok {
-		os.Remove(imFile)
+	if ok := reportMap(reply.MapKey, ImFile); !ok {
+		os.Remove(ImFile)
 	}
-
+	log.Println("Finished map task", reply.MapKey)
 }
 
 func doReduceTask(reduceF func(string, []string) string, reply *CommReply) {
 	mp := make(map[string][]string)
 
-	for _, imFile := range reply.imFiles {
-		f, err := os.Open(imFile)
+	log.Println("reply.ImFiles:", reply.ImFiles, reflect.TypeOf(reply.ImFiles))
+
+	for i, i2 := range reply.ImFiles {
+		log.Println("ImFiles: ", i, i2)
+	}
+
+	for _, ImFile := range reply.ImFiles {
+		log.Println(ImFile)
+		f, err := os.Open(ImFile)
 		if err != nil {
-			log.Printf("fail to open %v\n", imFile)
-			return
+			log.Println("fail to open", ImFile)
+			continue
 		}
 		dec := json.NewDecoder(f)
 		kva := []KeyValue{}
@@ -130,14 +142,14 @@ func doReduceTask(reduceF func(string, []string) string, reply *CommReply) {
 			break
 		}
 		for _, kv := range kva {
-			if ihash(kv.Key)%reply.nReduce == reply.reduceKey {
+			if ihash(kv.Key)%reply.NReduce == reply.ReduceKey {
 				mp[kv.Key] = append(mp[kv.Key], kv.Value)
 			}
 		}
 
 	}
 
-	outFile := fmt.Sprintf("mr-out-%d.txt", reply.reduceKey)
+	outFile := fmt.Sprintf("mr-out-%d.txt", reply.ReduceKey)
 	f, err := os.Create(outFile)
 	if err != nil {
 		log.Printf("fail to create %v\n", f)
@@ -148,7 +160,7 @@ func doReduceTask(reduceF func(string, []string) string, reply *CommReply) {
 	}
 	f.Close()
 
-	reportReduce(reply.reduceKey)
+	reportReduce(reply.ReduceKey)
 
 }
 
@@ -161,11 +173,13 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 	}
 	defer c.Close()
 
-	err = c.Call(rpcname, args, reply)
-	if err == nil {
-		return true
+	for i := 0; i < 3; i++ {
+		err = c.Call(rpcname, args, reply)
+		if err == nil {
+			return true
+		}
 	}
 
-	fmt.Println(err)
+	log.Println(err)
 	return false
 }

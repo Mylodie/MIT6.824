@@ -28,18 +28,18 @@ const (
 type CommArgs struct {
 	Operation int
 	Type      int
-	mapKey    string
-	reduceKey int
-	imFile    string
+	MapKey    string
+	ReduceKey int
+	ImFile    string
 }
 
 type CommReply struct {
 	Type      int
-	mapKey    string
-	reduceKey int
-	imFiles   []string
-	nReduce   int
-	applied   bool
+	MapKey    string
+	ReduceKey int
+	ImFiles   []string
+	NReduce   int
+	Applied   bool
 }
 
 // Cook up a unique-ish UNIX-domain socket name
